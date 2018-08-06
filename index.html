@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <style>
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Hello World!</h1>
+  <div id="future"></div>
+  <form id="text-form" id="chat_form">
+    <input id="chat_input" type="text">
+    <input type="submit" value="Send">
+  </form>
+  <form id="file-form">
+    <input type="file" id="file-upload-input" multiple />
+    <input type="submit" value="Upload" />
+  </form>
+  <div id="upload-progress" class="hidden">
+    Uploaded:
+    <span class="dyn-prog">0</span>%
+  </div>
+
+
+  <script src="https://code.jquery.com/jquery-1.10.2.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.1/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-file-client@2.0.2/socket.io-file-client.js"></script>
+
+  <script>
+    // ====================
+    // ====================
+    // Define the global variables
+    // ====================
+    // ====================
+
+    var socket = io.connect('http://localhost:3000'),
+      // Handle file uploads via Socket.io
+      uploader = new SocketIOFileClient(socket),
+      // The client ID under which files will be saved in AWS
+      // S3, etc. and generall the ID associated with any runs
+      // of PHATE from this machine. Will be serialized and stored
+      // in localStorage and comes with appropriate timeouts and 
+      // issues : i.e. does not work in Incognito Safari
+      storedClientId = JSON.parse(localStorage.getItem('PHATE_client_id'));
+
+    // ====================
+    // ====================
+    // Handle socket connections
+    // ====================
+    // ====================
+
+    // =====
+    // Connect to the server
+
+    socket.on('connect', function (data) {
+      // alert("Joining!");
+      // Join the client list
+      // >> Send the stored client id OR null
+      socket.emit('join', storedClientId || null);
+    })
+
+    // =====
+    // Wait for server handshake
+
+    socket.on('welcome', function (data) {
+      // alert("WELCOME!");
+      // alert(JSON.stringify(data));
+
+      // If we receive a client ID
+      // and don't already have one
+      // stored in localStorage...
+      if (!storedClientId) {
+        // Set the ID in localStorage
+        localStorage.setItem('PHATE_client_id', JSON.stringify(data.data));
+      }
+
+      // Update the name of the file upload input
+      $('#file-upload-input').attr('name', data.data);
+    })
+
+    // =====
+    // Handle file uploads
+
+    uploader.on('start', function (fileInfo) {
+      console.log('Start uploading', fileInfo);
+    });
+    uploader.on('stream', function (fileInfo) {
+      console.log('Streaming... sent ' + fileInfo.sent + ' bytes.');
+    });
+    uploader.on('complete', function (fileInfo) {
+      console.log('Upload Complete', fileInfo);
+      // Update the UI
+      $('#upload-progress').html('Upload Complete!')
+    });
+    uploader.on('error', function (err) {
+      console.log('Error!', err);
+    });
+    uploader.on('abort', function (fileInfo) {
+      console.log('Aborted: ', fileInfo);
+    });
+
+    // =====
+    // Tie the file upload into a form submission
+
+    var FileForm = $('#file-form');
+    $(FileForm).on('submit', function (ev) {
+      console.log("Submitted form for upload")
+      ev.preventDefault();
+
+      // Check if we have a stored client ID
+      if (!storedClientId) storedClientId = JSON.parse(localStorage.getItem('PHATE_client_id')) || null;
+
+      // Upload the file
+      var fileEl = document.getElementById('file-upload-input');
+      var uploadIds = uploader.upload(fileEl, {
+        data: {
+          PHATE_client_id: storedClientId ? storedClientId : null
+        }
+      });
+
+      // Show upload progress
+      $('#upload-progress').removeClass('hidden');
+
+      // setTimeout(function () {
+      //   uploader.abort(uploadIds[0]);
+      //   console.log(uploader.getUploadInfo());
+      // }, 1000);
+    });
+
+    // =====
+    // Track upload progress
+
+    socket.on('upload_progress', function (data) {
+      if (data) {
+        console.log("weifhwf", data);
+        $('#upload-progress .dyn-prog').text(data);
+      }
+    })
+
+    // =====
+    // Generate RFC Compliant UUID
+    // SOURCE: https://stackoverflow.com/questions/105034/create-guid-uuid-in-javascript
+
+    function uuidv4() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+  </script>
+</body>
+
+</html>
